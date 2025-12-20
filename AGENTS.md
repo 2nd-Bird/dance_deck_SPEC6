@@ -85,6 +85,24 @@ build: pnpm build
 
 install / test / build に失敗した場合、Codex は 自己修復ループに入る
 
+4.3 ローカル実行（commit / push 前に必須）
+
+Codex CLI は commit / push の前に、必ず以下をこの順序でローカル実行する。
+
+pnpm install
+
+pnpm lint
+
+pnpm typecheck
+
+pnpm test
+
+pnpm build
+
+いずれかが失敗した場合、修正 → 再実行を繰り返し、全て成功するまで続ける。
+
+CI は最終ゲートとし、AutoFix は CI 失敗時のみの安全網として扱う。
+
 5. CI の責務（Codexが生成）
 5.1 CI の存在目的
 
