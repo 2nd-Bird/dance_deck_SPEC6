@@ -172,6 +172,12 @@ SPEC.md の範囲内の変更
 
 条件を満たす場合、Codex は auto-merge を有効化してよい。
 
+7.3 GitHub 側の前提設定
+
+GitHub のリポジトリ設定で Allow auto-merge を ON にすること。
+
+main ブランチの branch protection で CI 必須（必須チェック）を有効にすること。
+
 8. 自己修復・エスカレーション戦略
 Phase 1: 直接修正（最大2回）
 
