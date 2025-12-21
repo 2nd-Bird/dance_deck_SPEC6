@@ -1,19 +1,19 @@
-import AddVideoModal from '@/components/AddVideoModal';
 import VideoGrid from '@/components/VideoGrid';
 import { filterVideosByTags, sortVideosByRecency, TagSearchMode } from '@/services/library';
 import { addVideo, getVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from 'react-native';
+import uuid from 'react-native-uuid';
 
 export default function HomeScreen() {
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [filteredVideos, setFilteredVideos] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modalVisible, setModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMode, setSearchMode] = useState<TagSearchMode>('and');
 
@@ -39,6 +39,46 @@ export default function HomeScreen() {
   const handleAddVideo = async (video: VideoItem) => {
     await addVideo(video);
     loadData();
+  };
+
+  const handleImportLocal = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: false,
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+
+        let thumbnailUri = undefined;
+        try {
+          const { uri } = await VideoThumbnails.getThumbnailAsync(asset.uri, {
+            time: 1000,
+          });
+          thumbnailUri = uri;
+        } catch (e) {
+          console.warn('Could not generate thumbnail', e);
+        }
+
+        const now = Date.now();
+        const newVideo: VideoItem = {
+          id: uuid.v4() as string,
+          sourceType: 'local',
+          uri: asset.uri,
+          thumbnailUri: thumbnailUri,
+          title: asset.fileName || 'Local Video',
+          tags: [],
+          createdAt: now,
+          updatedAt: now,
+          duration: asset.duration ? asset.duration / 1000 : 0,
+        };
+        await handleAddVideo(newVideo);
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to pick video');
+    }
   };
 
   // Request permissions on mount
@@ -86,15 +126,9 @@ export default function HomeScreen() {
       )}
 
       {/* Floating Action Button */}
-      <Pressable style={styles.fab} onPress={() => setModalVisible(true)}>
+      <Pressable style={styles.fab} onPress={handleImportLocal}>
         <MaterialCommunityIcons name="plus" size={32} color="white" />
       </Pressable>
-
-      <AddVideoModal
-        visible={modalVisible}
-        onClose={() => setModalVisible(false)}
-        onAdd={handleAddVideo}
-      />
     </SafeAreaView>
   );
 }
