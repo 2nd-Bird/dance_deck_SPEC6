@@ -20,7 +20,8 @@ jobs:
       - name: Checkout CI commit
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
 
       - name: Ensure PR exists
         id: ensure_pr
@@ -33,7 +34,12 @@ jobs:
 
           PR_NUMBER=$(gh pr list --repo "$GH_REPO" --head "$BRANCH" --base main --json number -q '.[0].number')
           if [ -z "$PR_NUMBER" ]; then
-            gh pr create --repo "$GH_REPO" --fill --head "$BRANCH" --base main >/dev/null
+            PR_TITLE=$(git log -1 --pretty=%s)
+            PR_BODY=$(git log -1 --pretty=%b)
+            if [ -z "$PR_BODY" ]; then
+              PR_BODY="Auto-created PR for $BRANCH."
+            fi
+            gh pr create --repo "$GH_REPO" --title "$PR_TITLE" --body "$PR_BODY" --head "$BRANCH" --base main >/dev/null
             PR_NUMBER=$(gh pr list --repo "$GH_REPO" --head "$BRANCH" --base main --json number -q '.[0].number')
           fi
           if [ -z "$PR_NUMBER" ]; then
