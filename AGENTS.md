@@ -178,6 +178,8 @@ GitHub のリポジトリ設定で Allow auto-merge を ON にすること。
 
 main ブランチの branch protection で CI 必須（必須チェック）を有効にすること。
 
+Repo assumptions: Allow auto-merge is enabled and main has required CI checks.
+
 8. 自己修復・エスカレーション戦略
 Phase 1: 直接修正（最大2回）
 

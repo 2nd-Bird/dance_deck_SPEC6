@@ -16,18 +16,31 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Checkout CI commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
       - name: Ensure PR exists
+        id: ensure_pr
         run: |
           BRANCH="${{ github.event.workflow_run.head_branch }}"
           case "$BRANCH" in
             feature/*|fix/*) ;;
-            *) exit 0 ;;
+            *) echo "pr_number=" >> "$GITHUB_OUTPUT"; exit 0 ;;
           esac
 
           PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number -q '.[0].number')
           if [ -z "$PR_NUMBER" ]; then
-            gh pr create --fill --head "$BRANCH" --base main
+            gh pr create --fill --head "$BRANCH" --base main >/dev/null
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --base main --json number -q '.[0].number')
           fi
+          if [ -z "$PR_NUMBER" ]; then
+            echo "pr_number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
-        run: gh pr merge --auto --squash --delete-branch || true
+        if: ${{ steps.ensure_pr.outputs.pr_number != '' }}
+        run: gh pr merge "${{ steps.ensure_pr.outputs.pr_number }}" --auto --squash --delete-branch
