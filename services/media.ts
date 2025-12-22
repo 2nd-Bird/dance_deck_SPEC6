@@ -5,6 +5,37 @@ import * as VideoThumbnails from 'expo-video-thumbnails';
 import uuid from 'react-native-uuid';
 import { VideoItem } from '@/types';
 
+type LegacyPickerResult = {
+  cancelled?: boolean;
+  canceled?: boolean;
+  uri?: string;
+  width?: number;
+  height?: number;
+  duration?: number | null;
+  fileName?: string | null;
+  assetId?: string | null;
+};
+
+export const getVideoAssetFromPicker = (
+  result: ImagePicker.ImagePickerResult | LegacyPickerResult
+): ImagePicker.ImagePickerAsset | null => {
+  if ('assets' in result && result.assets && result.assets.length > 0) {
+    return result.assets[0];
+  }
+  if ('uri' in result && result.uri) {
+    return {
+      uri: result.uri,
+      width: result.width ?? 0,
+      height: result.height ?? 0,
+      fileName: result.fileName ?? null,
+      duration: result.duration ?? null,
+      assetId: result.assetId ?? null,
+      type: 'video',
+    };
+  }
+  return null;
+};
+
 const getMediaDirs = () => {
   const baseDir = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
   if (!baseDir) {
@@ -42,11 +73,30 @@ const resolveAssetUri = async (asset: ImagePicker.ImagePickerAsset): Promise<str
   return asset.uri;
 };
 
+const createThumbnailForVideo = async (sourceUri: string, id: string): Promise<string | undefined> => {
+  await ensureMediaDirs();
+  const { thumbDir } = getMediaDirs();
+  try {
+    const { uri } = await VideoThumbnails.getThumbnailAsync(sourceUri, { time: 1000 });
+    const thumbDest = `${thumbDir}${id}.jpg`;
+    try {
+      await FileSystem.copyAsync({ from: uri, to: thumbDest });
+      return thumbDest;
+    } catch (copyError) {
+      console.warn('Failed to persist thumbnail', copyError);
+      return uri;
+    }
+  } catch (e) {
+    console.warn('Could not generate thumbnail', e);
+    return undefined;
+  }
+};
+
 export const importLocalVideoAsset = async (
   asset: ImagePicker.ImagePickerAsset
 ): Promise<VideoItem> => {
   await ensureMediaDirs();
-  const { videoDir, thumbDir } = getMediaDirs();
+  const { videoDir } = getMediaDirs();
   const id = uuid.v4() as string;
   const extension = getExtension(asset.uri, asset.fileName) || '.mp4';
   const videoUri = `${videoDir}${id}${extension}`;
@@ -60,20 +110,7 @@ export const importLocalVideoAsset = async (
     console.warn('Failed to copy video to app storage', e);
   }
 
-  let thumbnailUri: string | undefined;
-  try {
-    const { uri } = await VideoThumbnails.getThumbnailAsync(sourceUri, { time: 1000 });
-    const thumbDest = `${thumbDir}${id}.jpg`;
-    try {
-      await FileSystem.copyAsync({ from: uri, to: thumbDest });
-      thumbnailUri = thumbDest;
-    } catch (copyError) {
-      console.warn('Failed to persist thumbnail', copyError);
-      thumbnailUri = uri;
-    }
-  } catch (e) {
-    console.warn('Could not generate thumbnail', e);
-  }
+  const thumbnailUri = await createThumbnailForVideo(sourceUri, id);
 
   const now = Date.now();
   return {
@@ -87,4 +124,11 @@ export const importLocalVideoAsset = async (
     updatedAt: now,
     duration: asset.duration ? asset.duration / 1000 : 0,
   };
+};
+
+export const ensureVideoThumbnail = async (video: VideoItem): Promise<VideoItem> => {
+  if (video.thumbnailUri) return video;
+  const thumbnailUri = await createThumbnailForVideo(video.uri, video.id);
+  if (!thumbnailUri) return video;
+  return { ...video, thumbnailUri };
 };

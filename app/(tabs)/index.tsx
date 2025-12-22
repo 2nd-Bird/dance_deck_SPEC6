@@ -1,7 +1,7 @@
 import VideoGrid from '@/components/VideoGrid';
 import { filterVideosByTags, sortVideosByRecency, TagSearchMode } from '@/services/library';
-import { importLocalVideoAsset } from '@/services/media';
-import { addVideo, getVideos } from '@/services/storage';
+import { ensureVideoThumbnail, getVideoAssetFromPicker, importLocalVideoAsset } from '@/services/media';
+import { addVideo, getVideos, saveVideos } from '@/services/storage';
 import { VideoItem } from '@/types';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,10 +16,20 @@ export default function HomeScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMode, setSearchMode] = useState<TagSearchMode>('and');
 
+  const ensureThumbnails = async (items: VideoItem[]) => {
+    const updated = await Promise.all(items.map((video) => ensureVideoThumbnail(video)));
+    const changed = updated.some((video, index) => video.thumbnailUri !== items[index]?.thumbnailUri);
+    if (changed) {
+      await saveVideos(sortVideosByRecency(updated));
+    }
+    return updated;
+  };
+
   const loadData = async () => {
     setLoading(true);
     const data = await getVideos();
-    const sorted = sortVideosByRecency(data);
+    const hydrated = await ensureThumbnails(data);
+    const sorted = sortVideosByRecency(hydrated);
     setVideos(sorted);
     setFilteredVideos(sorted);
     setLoading(false);
@@ -37,7 +47,11 @@ export default function HomeScreen() {
 
   const handleAddVideo = async (video: VideoItem) => {
     await addVideo(video);
-    loadData();
+    setVideos((prev) => {
+      const next = sortVideosByRecency([video, ...prev]);
+      setFilteredVideos(filterVideosByTags(next, searchQuery, searchMode));
+      return next;
+    });
   };
 
   const handleImportLocal = async () => {
@@ -46,11 +60,14 @@ export default function HomeScreen() {
         mediaTypes: ['videos'] as ImagePicker.MediaType[],
         allowsEditing: false,
         quality: 1,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+        legacy: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        const newVideo = await importLocalVideoAsset(asset);
+      const asset = getVideoAssetFromPicker(result);
+      if (asset) {
+        const importedVideo = await importLocalVideoAsset(asset);
+        const newVideo = await ensureVideoThumbnail(importedVideo);
         await handleAddVideo(newVideo);
       }
     } catch (error) {
