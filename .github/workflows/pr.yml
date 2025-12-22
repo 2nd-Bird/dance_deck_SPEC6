@@ -23,54 +23,63 @@ jobs:
           ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
 
-      - name: Prepare git refs
+      - name: Create local branch
         run: |
           BRANCH="${{ github.event.workflow_run.head_branch }}"
+          echo "Target Branch: $BRANCH"
+          
+          # ブランチ名がない場合は終了
           if [ -z "$BRANCH" ]; then
-            echo "Missing head branch; skipping."
+            echo "No branch name found. Exiting."
             exit 0
           fi
+
+          # 対象ブランチ（feature/ または fix/）以外は終了
           case "$BRANCH" in
             feature/*|fix/*) ;;
-            *) echo "Branch $BRANCH is not eligible; skipping."; exit 0 ;;
+            *) echo "Branch $BRANCH is not eligible. Exiting."; exit 0 ;;
           esac
-          git remote -v
-          git fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
-          git show-ref --verify --quiet refs/remotes/origin/main
-          git checkout -B "$BRANCH" "${{ github.event.workflow_run.head_sha }}"
 
-      - name: Ensure PR exists
-        id: ensure_pr
+          # Detached HEAD状態から、ブランチ名付きのローカルブランチへ切り替え
+          git checkout -b "$BRANCH"
+
+          # 後のステップで参照するために環境変数へセット
+          echo "TARGET_BRANCH=$BRANCH" >> "$GITHUB_ENV"
+
+      - name: Create PR if not exists
+        id: create_pr
         run: |
-          BRANCH="${{ github.event.workflow_run.head_branch }}"
-          if [ -z "$BRANCH" ]; then
-            echo "pr_number=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          case "$BRANCH" in
-            feature/*|fix/*) ;;
-            *) echo "pr_number=" >> "$GITHUB_OUTPUT"; exit 0 ;;
-          esac
-
-          PR_NUMBER=$(gh pr list --repo "$GH_REPO" --head "$BRANCH" --base main --json number -q '.[0].number')
-          if [ -z "$PR_NUMBER" ]; then
+          # 既存のPRを確認
+          PR_NUMBER=$(gh pr list --head "$TARGET_BRANCH" --base main --json number -q '.[0].number')
+          
+          if [ -n "$PR_NUMBER" ]; then
+            echo "PR already exists: #$PR_NUMBER"
+          else
+            echo "Creating new PR..."
+            # コミットメッセージからタイトルと本文を取得
             PR_TITLE=$(git log -1 --pretty=%s)
             PR_BODY=$(git log -1 --pretty=%b)
+            
+            # タイトルが空の場合のフォールバック
             if [ -z "$PR_TITLE" ]; then
-              PR_TITLE="Auto-created PR for $BRANCH"
+              PR_TITLE="Auto-created PR for $TARGET_BRANCH"
             fi
-            if [ -z "$PR_BODY" ]; then
-              PR_BODY="Auto-created PR for $BRANCH."
-            fi
-            gh pr create --repo "$GH_REPO" --title "$PR_TITLE" --body "$PR_BODY" --head "$BRANCH" --base main >/dev/null
-            PR_NUMBER=$(gh pr list --repo "$GH_REPO" --head "$BRANCH" --base main --json number -q '.[0].number')
+
+            # PRを作成 (明示的にtitleとbodyを指定することで --fill エラーを回避)
+            gh pr create \
+              --head "$TARGET_BRANCH" \
+              --base main \
+              --title "$PR_TITLE" \
+              --body "$PR_BODY"
+            
+            # 作成したPR番号を再取得
+            PR_NUMBER=$(gh pr list --head "$TARGET_BRANCH" --base main --json number -q '.[0].number')
           fi
-          if [ -z "$PR_NUMBER" ]; then
-            echo "pr_number=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
-        if: ${{ steps.ensure_pr.outputs.pr_number != '' }}
-        run: gh pr merge --repo "$GH_REPO" "${{ steps.ensure_pr.outputs.pr_number }}" --auto --squash --delete-branch
+        if: ${{ steps.create_pr.outputs.pr_number != '' }}
+        run: |
+          echo "Enabling auto-merge for PR #${{ steps.create_pr.outputs.pr_number }}"
+          gh pr merge "${{ steps.create_pr.outputs.pr_number }}" --auto --squash --delete-branch
