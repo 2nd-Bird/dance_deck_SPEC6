@@ -23,6 +23,9 @@ jobs:
           ref: ${{ github.event.workflow_run.head_branch }}
           fetch-depth: 0
 
+      - name: Fetch main ref
+        run: git fetch origin main:refs/remotes/origin/main
+
       - name: Ensure PR exists
         id: ensure_pr
         run: |
@@ -36,6 +39,9 @@ jobs:
           if [ -z "$PR_NUMBER" ]; then
             PR_TITLE=$(git log -1 --pretty=%s)
             PR_BODY=$(git log -1 --pretty=%b)
+            if [ -z "$PR_TITLE" ]; then
+              PR_TITLE="Auto-created PR for $BRANCH"
+            fi
             if [ -z "$PR_BODY" ]; then
               PR_BODY="Auto-created PR for $BRANCH."
             fi
