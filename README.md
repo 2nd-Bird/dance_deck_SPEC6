@@ -18,3 +18,4 @@ iOS Expo Go repro steps (Home render triage):
 3) Open the Metro console logs.
 4) Tap the + button, import a local video, and stay on the Home screen.
 5) Capture one `[HomeRender]` line, `[Library][loadData][start]/[end]`, and `[Home][FlatList][viewable]` in order; note any `[ASSERT]`.
+6) If the grid is still blank, also capture `[Home][FlatList][layout]`, `[Home][FlatList][contentSize]`, and `[Home][FlatList][renderItem]`.

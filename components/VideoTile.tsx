@@ -22,7 +22,22 @@ export default function VideoTile({ video, width }: VideoTileProps) {
         <Link href={`/video/${video.id}`} asChild>
             <Pressable style={[styles.container, { width, height: width }]}>
                 {video.thumbnailUri ? (
-                    <Image source={{ uri: video.thumbnailUri }} style={styles.image} resizeMode="cover" />
+                    <Image
+                        source={{ uri: video.thumbnailUri }}
+                        style={styles.image}
+                        resizeMode="cover"
+                        onError={(event) => {
+                            if (!__DEV__) return;
+                            console.log(
+                                '[Home][Thumbnail][error]',
+                                JSON.stringify({
+                                    id: video.id,
+                                    uri: video.thumbnailUri ?? null,
+                                    error: event.nativeEvent?.error ?? null,
+                                })
+                            );
+                        }}
+                    />
                 ) : (
                     <View style={[styles.placeholder, { width, height: width }]}>
                         <MaterialCommunityIcons name="video" size={32} color="#fff" />
