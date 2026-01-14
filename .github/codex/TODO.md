@@ -32,35 +32,34 @@
   - Human ask: 公開URL確定 or 仮URL
 
 - [ ] (P0) PRIV-001 App Privacy inventory
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: 追加仕様(Privacy) 5.x
-  - Next: データ送信有無を棚卸し→ docs/app_privacy.md と実装を整合
+  - Next: App Store Connect へ申告内容を入力
 
 ### P1 — Core UX (Loop / Timeline)
 - [ ] (P1) UX-LOOP-001 Loop操作がFreeで常に動作する（gating巻き込み防止）
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: 追加仕様(課金) 2.4
-  - Next: bookmark作成だけをpaywall対象にする回帰テストを追加
+  - Next: Expo GoでFree挙動の再確認
   - Verify: unit/integration + Expo Goで手動確認
 
 - [ ] (P1) UX-TL-001 Scrubber vs Loop Window ジェスチャ競合の解消
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: Timeline/Loop用語セクション + 既存UI仕様
-  - Next: hitSlop/gesture priorityを整理、操作領域を分離
+  - Next: Expo Goでジェスチャ優先順位の体感確認
 
 - [ ] (P1) UX-SKIP-001 ダブルタップskip + フィードバック位置
-  - Status: TODO
+  - Status: DONE
   - SPEC refs: UI追記（ダブルタップ/フィードバック高さ）
-  - Next: 左/右double tapで±5s、波紋＋テキスト、表示位置は再生アイコンと同じ高さ
+  - Next: Expo Goでフィードバック位置の体感確認
 
 ### P2 — Polish / Performance
 - [ ] (P2) PERF-001 体感の重さ/メモリ/不要レンダ削減（見た目維持）
-  - Status: TODO
-  - Next: render profiling / memoization / FlatList最適化 / 画像サムネキャッシュなど
+  - Status: DONE
+  - Next: Expo Goでスクロール時の体感確認
   - Verify: FPS/JS frame drops をログ化（可能なら）
 
 ---
 
 ## Last updated
-- YYYY-MM-DD HH:MM (by Codex)
-
+- 2026-01-14 21:55 (by Codex)

@@ -2,6 +2,7 @@ import LibraryTile from "@/components/LibraryTile";
 import PaywallModal from "@/components/PaywallModal";
 import TapTempoButton from "@/components/TapTempoButton";
 import { useProStatus } from "@/contexts/ProContext";
+import { isProRequired } from "@/services/proGating";
 import { trackEvent } from "@/services/analytics";
 import { getVideos, updateVideo } from "@/services/storage";
 import { LoopBookmark, VideoItem } from "@/types";
@@ -75,6 +76,7 @@ export default function VideoPlayerScreen() {
     const tapTimeoutRef = useRef<any>(null);
     const lastTapRef = useRef(0);
     const videoLayoutRef = useRef({ width: 0, height: 0 });
+    const playControlCenterYRef = useRef<number | null>(null);
     const skipFeedbackAnim = useRef(new Animated.Value(0)).current;
 
     // Metadata State (Notes)
@@ -385,6 +387,18 @@ export default function VideoPlayerScreen() {
         return (clamped / width) * duration;
     };
 
+    const isTouchWithinLoopWindow = (x: number) => {
+        const width = timelineWidthRef.current;
+        const duration = durationRef.current;
+        if (width <= 0 || duration <= 0) return false;
+        const loopStart = loopStartRef.current;
+        const loopEnd = loopStart + loopDurationRef.current;
+        const startLeft = (loopStart / duration) * width;
+        const endLeft = (loopEnd / duration) * width;
+        const padding = LOOP_HANDLE_WIDTH;
+        return x >= startLeft - padding && x <= endLeft + padding;
+    };
+
     const displayPositionMillis = isScrubbing ? scrubPositionMillis : positionMillis;
 
     const playheadLeft = useMemo(() => {
@@ -409,10 +423,14 @@ export default function VideoPlayerScreen() {
 
     const playheadPanResponder = useRef(
         PanResponder.create({
-            onStartShouldSetPanResponder: () =>
-                durationRef.current > 0 && timelineWidthRef.current > 0,
-            onMoveShouldSetPanResponder: () =>
-                durationRef.current > 0 && timelineWidthRef.current > 0,
+            onStartShouldSetPanResponder: (event) =>
+                durationRef.current > 0
+                && timelineWidthRef.current > 0
+                && !isTouchWithinLoopWindow(event.nativeEvent.locationX),
+            onMoveShouldSetPanResponder: (event) =>
+                durationRef.current > 0
+                && timelineWidthRef.current > 0
+                && !isTouchWithinLoopWindow(event.nativeEvent.locationX),
             onPanResponderGrant: (event) => {
                 logTimelineTouch("playhead", "start", event);
                 setDebugActive("playhead", true);
@@ -633,9 +651,11 @@ export default function VideoPlayerScreen() {
         const nextPosition = Math.min(Math.max(basePosition + delta, 0), duration);
         videoRef.current?.setPositionAsync(nextPosition);
         const fallbackY = locationY;
-        const overlayY = videoLayoutRef.current.height
-            ? videoLayoutRef.current.height * 0.5
-            : fallbackY;
+        const overlayY = playControlCenterYRef.current ?? (
+            videoLayoutRef.current.height
+                ? videoLayoutRef.current.height * 0.5
+                : fallbackY
+        );
         setSkipFeedback({
             x: locationX,
             y: overlayVisible ? overlayY : fallbackY,
@@ -698,7 +718,7 @@ export default function VideoPlayerScreen() {
     };
 
     const handleAutoDetectBpm = () => {
-        if (!isPro) {
+        if (isProRequired("bpm_auto_detect") && !isPro) {
             void trackEvent('bpm_auto_detect_attempted', { videoId: videoItem?.id ?? null });
             setPaywallVisible(true);
             return;
@@ -707,7 +727,7 @@ export default function VideoPlayerScreen() {
     };
 
     const handleSaveBookmark = () => {
-        if (!isPro) {
+        if (isProRequired("bookmark_create") && !isPro) {
             void trackEvent('bookmark_create_attempted', { videoId: videoItem?.id ?? null });
             setPaywallVisible(true);
             return;
@@ -847,7 +867,13 @@ export default function VideoPlayerScreen() {
                                 </View>
 
                                 {/* Middle Row: Play/Pause */}
-                                <View style={styles.middleControlRow}>
+                                <View
+                                    style={styles.middleControlRow}
+                                    onLayout={(event) => {
+                                        const { y, height } = event.nativeEvent.layout;
+                                        playControlCenterYRef.current = y + height / 2;
+                                    }}
+                                >
                                     <Pressable onPress={togglePlay} style={styles.bigPlayBtn}>
                                         <MaterialCommunityIcons name={isPlaying ? "pause-circle" : "play-circle"} size={isLandscape ? 60 : 72} color="white" />
                                     </Pressable>
