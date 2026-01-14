@@ -273,3 +273,14 @@ Codex は以下を明示的に依頼すること：
 * Secrets は GitHub Secrets のみを使用
 * 平文キーのコミットは禁止
 * Codex はログ・PR本文に secrets を出力しない
+
+ The following files are tracked artifacts and MUST be committed
+whenever modified by Codex:
+
+- .github/codex/runs/**
+- .github/codex/RUNLOG.md
+- .github/codex/RUNS_INDEX.md
+- .github/codex/TODO.md
+
+Codex must never stop to ask about changes to these files.
+If modified during a loop, they are to be included in the same commit.
