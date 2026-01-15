@@ -1,316 +1,397 @@
 # AGENTS.md — Repository Automation Policy (Dance Deck)
 
-This repository is designed for **Codex CLI long-runs**.
+## 0. North Star (Most Important)
 
-- **WHAT to build:** `SPEC.md` (single source of truth)
-- **HOW to operate:** this file (`AGENTS.md`)
-- **WORK QUEUE:** `.github/codex/TODO.md` (or `TODO.md` if that is the canonical path in this repo)
+This repository is designed to be operated **autonomously** by **Codex CLI** as the **sole execution agent**:
+implementation → dependency install → tests/build → push → PR → (when safe) auto-merge.
 
-Human involvement should be limited to **spec decisions** and **device/external verification**.
+Humans only do:
+- Product specification (SPEC.md)
+- Exceptional decisions / providing external credentials / device-only verification
 
----
-
-## Quickstart (telegraph)
-
-### RUN START
-1. Read: `SPEC.md`, `.github/codex/TODO.md`, recent `.github/codex/runs/**`
-2. Create a fresh branch (`feat/...` or `fix/...`)
-3. Pick the next **highest-priority actionable** queue item (P0 > P1 > P2)
-
-### LOOP (repeat)
-1. Implement the smallest safe slice for the chosen item
-2. Run **Quick Gate** (see “Gates”)
-3. Commit (do **not** push unless in “RUN END”)
-4. Update `.github/codex/TODO.md` + run logs
-5. Continue with the next item
-
-### RUN END (only when done)
-1. Run **Full Gate**
-2. Push branch
-3. Open PR with a tight summary + SPEC/TODO references
-4. Enable auto-merge **only if eligible** (see “Auto-merge policy”)
+**CI / AutoFix / workflows are also generated and maintained by Codex** based on **SPEC.md** and **this file**.
 
 ---
 
-## 1) Purpose & Operating Model
+## 1. Single Source of Truth (SSOT)
 
-This repo assumes **Codex CLI is the only executor** for:
-- implementation
-- dependency install
-- tests/build
-- CI / AutoFix workflow creation & maintenance
+- **WHAT to build:** `SPEC.md`
+- **HOW to operate / automate:** `AGENTS.md` (this file)
+- **Work queue / priorities / next actions:** `.github/codex/TODO.md`
 
-Humans must **not** manually run `pnpm install` as part of the normal flow.
-Humans may provide device logs / screenshots when requested.
-
----
-
-## 2) Single Source of Truth
-
-- **WHAT:** `SPEC.md`
-- **HOW:** `AGENTS.md`
-- **QUEUE:** `.github/codex/TODO.md`
-
-If a requested change is not clearly supported by `SPEC.md`, do **one** of:
-- adjust implementation to match SPEC
-- or open a separate PR that updates SPEC (do not “silently” expand scope)
+### 1.1 Hard rule: no unapproved spec changes
+Codex MUST NOT add or change product behavior that is not described in `SPEC.md`.
+If implementation requires a missing decision, Codex must create a **SPEC.md update PR** (or add a SPEC-gap item to TODO).
 
 ---
 
-## 3) Skills (separate, opt-in)
+## 2. Execution Assumptions (Codex CLI)
 
-Skills are stored separately and must follow the best-practice convention.
+Codex is expected to run with:
+- `workspace-write` enabled
+- network access enabled (dependency install / test runs require it)
+- minimal approvals (ideally `ask-for-approval = never`)
 
-### Where
-- Preferred: `skills/<skill-name>.md`
-- Fallback: `SKILLS.md` (if the repo uses a single file)
-
-### When to use skills
-- **Do not use skills automatically**.
-- Use a skill only when:
-  1) the human explicitly says “use skill: <name>”, **or**
-  2) a queue item is genuinely underspecified and proceeding would likely cause wrong work.
-
-### How to use skills without blocking long-runs
-If (2) happens:
-1. Invoke the `ask-questions-if-underspecified` skill to produce the **minimum** clarifying question set.
-2. Write those questions into `.github/codex/TODO.md` under the item as `HUMAN-VERIFY`.
-3. Mark the item `HUMAN-BLOCKED`.
-4. Immediately continue with the next actionable item (do not stop the run).
+Sandboxing still applies, but network must be allowed for this repo’s workflow.
 
 ---
 
-## 4) Long-Run Protocol (convergence-first)
+## 3. Startup Checklist (Always)
 
-### 4.1 Work selection
-- Always select the **highest-priority actionable** item from the queue.
-- Prefer “finish-to-DONE” over starting many PARTIAL items.
-
-### 4.2 Minimum forward motion
-- A “run” must complete **at least 3 loops** (commits) before stopping,
-  unless the queue has **no actionable items** (only `HUMAN-BLOCKED`).
-
-### 4.3 No “diminishing returns” exits
-Stopping because “diminishing returns” is **not allowed**.
-Only stop when the queue is non-actionable or a hard external dependency blocks further work.
-
-### 4.4 Branch hygiene during long-runs
-- Keep committing to the same long-run branch.
-- Avoid rewriting history (no force-push).
+At the start of a run (and before Loop 1):
+1. Read **entire** `SPEC.md` and `AGENTS.md`
+2. Read `.github/codex/TODO.md`
+3. Internally list:
+   - in-scope changes (SPEC-backed)
+   - out-of-scope changes (not in SPEC)
+4. Create a new branch (NEVER commit directly to `main`)
 
 ---
 
-## 5) Branch Strategy (Codex must follow)
+## 4. Long-Run Mode (Default Operating Model)
 
-Create a new branch for every run.
+A “long run” is a **multi-loop** execution that continues until the system converges toward SPEC compliance.
 
-Naming:
-- `feat/<short-desc>`
-- `fix/<short-desc>`
-- `chore/<short-desc>`
+### 4.1 Loop Definition (MANDATORY)
 
-All changes land in `main` via PR.
+One LOOP =
+
+1. **Working tree must be clean**
+   - `git status --porcelain` must be empty
+   - If dirty due to Codex artifacts (run logs / TODO updates), commit them first.
+2. Read:
+   - `SPEC.md`
+   - `.github/codex/TODO.md`
+3. Select the next **highest-priority actionable** item from TODO
+4. Implement changes
+5. Run the full local gate (see §7)
+6. Commit to the current long-run branch (**DO NOT push during loops**)
+7. Update:
+   - `.github/codex/TODO.md` (status/next/verify)
+   - `.github/codex/runs/*` + `RUNS_INDEX.md` (see §6)
+8. Automatically continue to the next loop
+
+**Default behavior: KEEP WORKING.**  
+Do not stop after one change if TODO still contains actionable items.
+
+### 4.2 “Actionable” vs “Non-actionable” TODO items
+
+Treat as **non-actionable** (skip, do not block the run):
+- `HUMAN-BLOCKED` (missing external keys / platform access / device logs required to proceed)
+- `HUMAN-VERIFY` (device UX verification needed, but implementation can proceed elsewhere)
+
+Treat as **actionable**:
+- `TODO`
+- `PARTIAL` (if remaining work is code-side, not purely device verification)
+
+If the TODO legend does not include `HUMAN-VERIFY`, Codex may add it to the legend and use it.
+
+### 4.3 Anti-early-exit guard (prevents “15 min stop”)
+
+Codex MUST NOT exit the long run due to “diminishing returns” unless:
+- At least **3 loops** were attempted, AND
+- All remaining actionable work is either:
+  - broken down into concrete next actions in TODO, or
+  - truly blocked (HUMAN-BLOCKED / HUMAN-VERIFY), and documented
 
 ---
 
-## 6) Dependencies, Tests, Builds
+## 5. Human Verification & External Inputs (NON-BLOCKING at run level)
 
-### 6.1 Standard commands (package.json canonical)
+Human/device verification (Expo Go, real device UX, purchase flow, App Store settings, external credentials)
+**MUST NOT stop the entire long run.**
+
+Rules:
+- If an item requires human verification:
+  - implement everything possible without the human
+  - mark the item `HUMAN-VERIFY`
+  - write the exact steps/log keys the human must provide in TODO
+  - continue with other actionable items
+- If an item cannot progress without external credentials/logs:
+  - mark it `HUMAN-BLOCKED`
+  - specify exactly what is needed (keys, IDs, steps, logs)
+  - continue with other actionable items
+
+**Only on EXIT** should Codex compile a consolidated “Human Actions Needed” list.
+
+---
+
+## 6. Logging & Work Tracking (Required, Minimal, Tracked)
+
+Purpose: keep long runs observable and resumable while staying low-noise.
+
+### 6.1 Per-loop run note (required)
+At the end of each loop, create a file under:
+- `.github/codex/runs/YYYYMMDD_HHMMSS.md`
+
+Minimal content:
+- timestamp (local + UTC)
+- branch name
+- loop number
+- TODO item(s) worked on
+- SPEC refs addressed (short)
+- commands run + result (pass/fail)
+- what changed (short)
+- next actions / remaining blockers (top 3)
+
+### 6.2 Index (required)
+Append one summary line to:
+- `.github/codex/RUNS_INDEX.md`
+
+Format:
+`YYYY-MM-DD HH:MM | <branch> | <TODO ids or SPEC refs> | <result> | <short note>`
+
+### 6.3 Rolling summary (optional but recommended)
+`.github/codex/RUNLOG.md` may be updated on EXIT with:
+- current status snapshot
+- where to resume (top TODO items)
+- what is blocked and why
+
+---
+
+## 7. Dependencies / Tests / Build (Fully Automated)
+
+Humans do **not** run dependency installs. Codex does.
+
+### 7.1 Standard commands (must follow package.json)
 - install: `pnpm install`
 - lint: `pnpm lint`
 - typecheck: `pnpm typecheck`
 - test: `pnpm test`
 - build: `pnpm build`
 
-### 6.2 Gates (tiered)
+### 7.2 Local gate (MANDATORY before any commit and before any push)
+Run in this order:
+1. `pnpm install`
+2. `pnpm lint`
+3. `pnpm typecheck`
+4. `pnpm test`
+5. `pnpm build`
 
-#### Quick Gate (every loop)
-Run:
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
+If any step fails:
+- fix the root cause
+- rerun the gate from the failing step onward (or from install if needed)
+- repeat until all green
 
-#### Full Gate (milestones)
-Run:
-- `pnpm install`
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- `pnpm build` (when applicable)
-
-**Full Gate is mandatory**:
-- before pushing a branch
-- before opening/updating the PR for merge readiness
-- after changing `package.json` / `pnpm-lock.yaml`
-- after changes that affect native modules / Expo config / build tooling
-- when Quick Gate fails repeatedly and the root cause may be stale deps
-
-### 6.3 Self-healing loop
-If any gate fails:
-1. Fix the smallest plausible root cause.
-2. Re-run the **same gate**.
-3. Escalate per “Repair & Escalation”.
+CI is the final gate; AutoFix is a safety net (see §8–§9).
 
 ---
 
-## 7) CI Policy (Codex-generated)
+## 8. CI Responsibilities (Generated by Codex)
 
-### 7.1 Purpose
-CI exists primarily to drive **Codex AutoFix** and protect `main`.
+CI exists primarily to drive Codex AutoFix, not for humans.
 
-### 7.2 Minimum CI requirements
-On PR / feature branch push:
-- `pnpm install`
-- `pnpm lint`
-- `pnpm typecheck`
-- `pnpm test`
-- `pnpm build` (when required for release confidence)
+Minimum requirements Codex must ensure in CI:
+- runs on PRs and on feature/fix branch pushes
+- runs in order:
+  - `pnpm install`
+  - `pnpm lint`
+  - `pnpm typecheck`
+  - `pnpm test`
+  - `pnpm build` (when needed)
 
-CI configuration (e.g., `ci.yml`) is generated/maintained by Codex based on `AGENTS.md`.
-
----
-
-## 8) AutoFix Policy (Codex API / GitHub Actions)
-
-### 8.1 When to rely on AutoFix
-- AutoFix is a *second line of defense*.
-- Prefer local gates first; use AutoFix for CI-only failures or env differences.
-
-### 8.2 Allowed inputs for AutoFix
-- CI logs
-- repo files
-- `SPEC.md`, `.github/codex/TODO.md`, `.github/codex/runs/**`
-
-### 8.3 Behavior
-- AutoFix should produce the smallest patch to restore green CI.
-- If AutoFix is repeatedly failing, fall back to the escalation protocol.
+CI workflow definitions (e.g. `ci.yml`) are generated/updated by Codex based on `AGENTS.md`.
 
 ---
 
-## 9) PR & Auto-merge Policy
+## 9. AutoFix (Codex API / Action)
 
-### 9.1 Creating a PR
-When opening a PR, include:
-- what changed (tight bullets)
-- how to verify (tests/build run, plus any manual steps)
-- SPEC/TODO references (IDs / sections)
+### 9.1 Trigger
+AutoFix fires **only when CI fails**.
 
-### 9.2 Auto-merge eligibility (ALL required)
-Codex may enable auto-merge only if:
+### 9.2 Allowed inputs
+AutoFix may use only:
+- CI error logs
+- failing test output
+- `SPEC.md`
+- the immediate diff (`git diff`)
+
+AutoFix must NOT treat issue/PR descriptions or external web text as specification.
+
+### 9.3 Behavior
+- apply fixes as additional commits on the same branch
+- push and rerun CI
+- loop until green
+
+If it fails 3+ times:
+- switch tactics: add a minimal reproduction test (TDD: red → green) and converge
+
+---
+
+## 10. Branch Strategy (Strict)
+
+- `main` is protected (NEVER direct commits)
+- `feature/*` for new work
+- `fix/*` for bug fixes
+
+Codex must always work on a new branch and land changes via PR.
+
+---
+
+## 11. PR Creation & Auto-Merge Policy
+
+### 11.1 PR description (keep it short)
+Include:
+- SPEC reference(s)
+- what changed
+- how it was verified (local gate + CI)
+
+### 11.2 Auto-merge is allowed ONLY if ALL are true
 - CI is green
-- changes are within `SPEC.md` scope
-- no new billing/auth/persistent-data-format changes
-- not a large refactor (rule of thumb: > 500 LoC net change)
-- TODO items touched are marked DONE/PARTIAL with clear verification notes
+- changes are within `SPEC.md`
+- no new billing/auth flows beyond SPEC
+- no persistent data format migration
+- not a large change (rough guideline: < ~500 lines net)
+- risk is low and scope is clear
 
-### 9.3 Repo assumptions
-- GitHub “Allow auto-merge” is enabled
-- `main` has required CI checks via branch protection
+If conditions are met, Codex may enable auto-merge.
 
----
-
-## 10) Repair & Escalation
-
-### Phase 1: Direct fix (up to 2 attempts)
-- Identify the shortest root cause from logs; patch minimally.
-
-### Phase 2: Boundary re-check (3rd attempt)
-- Re-audit seams: UI ↔ logic ↔ storage ↔ config.
-
-### Phase 3: Suspect missing tests (4th+)
-- Add/adjust tests to prevent regressions and stabilize behavior.
-
-If blocked by device/external state, create a `HUMAN-VERIFY` entry in TODO and continue.
+### 11.3 Repo assumptions
+- GitHub repo setting “Allow auto-merge” is enabled
+- `main` requires CI checks (branch protection)
 
 ---
 
-## 11) Debugging & Root Cause Analysis Policy (Expo / React Native)
+## 12. Self-Repair & Escalation Strategy
 
-This section defines a **mandatory protocol** to prevent speculative fixes in Expo / RN runtime issues.
+Phase 1 (up to 2 attempts):
+- fix the most direct cause indicated by logs/tests
+
+Phase 2 (3rd attempt):
+- reassess boundaries (UI vs logic vs storage vs configuration)
+
+Phase 3 (4th+):
+- assume missing/incorrect tests
+- add a reproduction test first, then fix until green
+
+---
+
+## 13. Debugging & Root Cause Analysis (Expo / React Native)
+
+Goal: prevent speculative fixes in runtime issues.
 
 ### Core principle
 - **Do not guess.**
-- If you cannot prove root cause via code or logs, you must not “fix” it.
+- If the root cause cannot be proven by code or logs, do not ship a “maybe” fix.
 
-### Mandatory workflow (when cause is uncertain)
+### Mandatory workflow when cause is uncertain
 
-1) **Classify the failure domain (required)**  
-Before changing code, classify into one (and list what you ruled out):
-- A. Input / Permission / Picker failure
-- B. File / URI / Native module incompatibility
-- C. Persistence / Storage / Cache / Race condition
-- D. Data schema / Type / Key mismatch
-- E. UI rendering / FlatList / layout / key / style
-- F. UI state / filter / derived state
+1) Classify the failure domain (required)
+Codex must classify into one of:
+A. Input / Permission / Picker failure  
+B. File / URI / Native module incompatibility  
+C. Persistence / Storage / Cache / Race condition  
+D. Data schema / Type / Key mismatch  
+E. UI rendering / FlatList / layout / key / style  
+F. UI state / filter / derived state
 
-If evidence is insufficient, you must not proceed.
+Codex must also state which domains were ruled out by evidence.
 
-2) **Add minimal observation logs (no behavior change)**  
-Allowed dev-only logs:
-- single-line JSON
-- counts + representative sample (head/tail)
-- at both data-fetch and render sites
+2) Add minimal observation logs (no behavior change)
+Allowed:
+- one-line JSON logs
+- counts + representative sample (first/last)
+- logs at both “data fetch” and “render” points
 
-Example:
-```js
-console.log("[HomeRender]", {
-  videosCount,
-  filteredCount,
-  selectedTags,
-  mode,
-  firstId: videos[0]?.id,
-});
-Add explicit assertions for “impossible” states
-Log [ASSERT] for cases like:
+3) Add explicit assertions for “impossible states”
+Example patterns:
+- savedCount > 0 but renderedCount == 0
+- filters disabled but results empty
+- renderItem never called
 
-savedCount > 0 but renderedCount == 0
+4) Request human-run logs when needed — WITHOUT stopping the whole run
+If device/Expo Go logs are required:
+- Codex may land only instrumentation/assertion changes
+- Mark the TODO item `HUMAN-VERIFY` or `HUMAN-BLOCKED` with:
+  - exact reproduction steps
+  - exact log keys to capture
+- **Do not continue making speculative fixes for that issue**
+- **Do continue the long run on other TODO items**
 
-filter disabled but results empty
+5) After root cause is confirmed
+- apply the minimal diff fix in the confirmed domain
+- rerun at least: `pnpm lint`, `pnpm typecheck`, `pnpm test` (full gate preferred)
 
-renderItem never called
+### Forbidden anti-patterns
+- repeating the same hypothesis without evidence
+- changing multiple hypotheses at once
+- using “likely/probably” as justification for code changes
 
-Ask the human for Expo Go reproduction + logs
-Request:
+---
 
-exact reproduction steps (screen actions)
+## 14. Security & Operations
 
-which log keys to capture
+- Secrets must be stored only in GitHub Secrets (or local env, never committed)
+- Never commit plaintext keys
+- Never print secrets in logs or PR bodies
 
-Do not continue implementing fixes until logs are reviewed.
+---
 
-Fix with minimal diff only after root cause is confirmed
-After the fix, run:
+## 15. Skills (Stored Separately; Best-Practice Compatible)
 
-pnpm lint
+Skills are maintained outside this file (best-practice format) and live at:
+- `.github/codex/skills/*.md`
 
-pnpm typecheck
+### 15.1 How to invoke a skill
+Codex must use a skill **only when explicitly invoked** by the run prompt or TODO, e.g.:
+- `SKILL: ask-questions-if-underspecified`
+- or “Use the skill: ask-questions-if-underspecified”
 
-pnpm test
+When invoked:
+- Codex MUST read the corresponding skill file and follow it as an additional constraint.
 
-Forbidden anti-patterns
-repeating the same domain hypothesis without evidence
+### 15.2 Long-run compatibility note
+Because long runs must keep moving:
+- Unless a skill is explicitly invoked, Codex should avoid blocking on questions.
+- If something is unclear, prefer:
+  - documenting assumptions in run notes
+  - adding a TODO item requesting a decision (HUMAN-BLOCKED / NEEDS-DECISION style)
+  - continuing with other actionable work
 
-changing multiple hypotheses at once
+---
 
-“likely/probably” speculative edits
+## 16. Tracked Artifacts (MUST COMMIT)
 
-12) Security & Ops
-Secrets must live in GitHub Secrets only.
+The following files are tracked artifacts and MUST be committed whenever modified by Codex:
 
-Never commit plaintext keys.
-
-Never print secrets in logs or PR bodies.
-
-13) Tracked Artifacts (must commit if modified)
-These files are tracked artifacts and MUST be committed whenever modified:
-
-.github/codex/runs/**
-
-.github/codex/RUNLOG.md
-
-.github/codex/RUNS_INDEX.md
-
-.github/codex/TODO.md
+- `.github/codex/runs/**`
+- `.github/codex/RUNLOG.md`
+- `.github/codex/RUNS_INDEX.md`
+- `.github/codex/TODO.md`
 
 Codex must never stop to ask about changes to these files.
-If modified during a loop, include them in the same commit.
+If modified during a loop, they must be included in the same commit.
+
+---
+
+## 17. Communication Style (Low Noise)
+
+- Prefer “telegraph” style in run notes / PR text:
+  - short phrases, minimal filler, high signal
+- Do not ask “what next?” while actionable TODO items remain.
+- Keep moving until exit conditions are met.
+
+---
+
+## 18. Exit Conditions & Exit Procedure (Long Run)
+
+### 18.1 Exit conditions (ONLY THESE)
+Codex may exit the long run only if:
+A) TODO has no actionable items left (only DONE / HUMAN-VERIFY / HUMAN-BLOCKED remain), OR  
+B) fully blocked by missing external credentials/platform access and documented in TODO, OR  
+C) diminishing returns, AND:
+   - remaining gaps are listed in TODO with concrete next actions
+   - anti-early-exit guard (§4.3) is satisfied
+
+Human verification alone is NOT a reason to stop.
+
+### 18.2 Exit procedure (MANDATORY)
+On exit:
+1. ensure all commits are complete on the current branch
+2. push the branch to origin
+3. open/update PR (if not already) and enable auto-merge only if §11.2 is satisfied
+4. provide a final summary:
+   - SPEC compliance status
+   - remaining TODO items (especially HUMAN-VERIFY / HUMAN-BLOCKED)
+   - exact human actions needed (steps, logs, keys)
+   - whether convergence is stable or risky
