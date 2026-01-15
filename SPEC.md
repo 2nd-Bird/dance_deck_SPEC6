@@ -3,6 +3,18 @@ Dance Deck
 
 Beat-Synced Loop Player & Video Deck for Dancers
 
+### 追加仕様5.1: 課金（RevenueCat）の実機検証環境
+
+- Expo Go では RevenueCat SDK は動作しない。
+- 課金フロー検証は EAS Dev Client / Development build を用いること。
+- Human verification 手順（P0）:
+  1) eas build --profile development --platform ios
+  2) TestFlight または dev client で起動
+  3) Paywall表示 → 購入 → entitlement "pro" 反映
+  4) Restore purchases → entitlement "pro" 反映
+- 端末検証が必要なため TODO は HUMAN-BLOCKED / HUMAN-VERIFY として扱う。
+
+
 追加仕様5: App Store申請・課金（RevenueCat前提） v1
 0. 用語（UI/機能パーツの呼称を固定）
 
