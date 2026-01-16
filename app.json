@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Dance Deck",
-    "slug": "dance_deck",
+    "name": "gravitic-armstrong",
+    "slug": "gravitic-armstrong",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
