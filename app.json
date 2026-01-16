@@ -36,4 +36,11 @@
       "typedRoutes": true
     }
   }
+   "expo": {
+    "name": "Dance Deck",
+    "slug": "dance_deck",
+    "ios": {
+      "bundleIdentifier": "com.2ndbird.dancedeck"
+    }
+  }
 }
