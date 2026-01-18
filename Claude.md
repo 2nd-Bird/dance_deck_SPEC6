@@ -1,6 +1,12 @@
 # CLAUDE.md (Autopilot Supervisor for Addendum 6)
 > Lightweight onboarding + behavior rules for Claude Code. Keep this file short and evolve it over time.
 
+## Must Read (Critical Documentation)
+- **Approval Policy**: `agent_docs/approvals/POLICY.md` - Safe/dangerous commands
+- **Approval Log**: `agent_docs/approvals/APPROVAL_LOG.md` - Every prompt logged here
+- **Userless Plan**: `agent_docs/approvals/USERLESS_PLAN.md` - Patterns and fixes
+- **Monitor Script**: `scripts/monitor_workers.sh` - Friction-free worker monitoring
+
 ## Why / What
 This repo exists to implement **Addendum 6: BPM Auto Detect (On-device estimation from local video + Beat Map)** for Dance Deck.
 Everything else is already implemented and out of scope.
@@ -47,7 +53,20 @@ This project uses `codex-agent` to orchestrate multiple Codex workers in paralle
 - Do NOT manipulate `.codex-agent/**` manually.
 - Interact with workers ONLY via `codex-agent` commands.
 - Each worker operates in its own git worktree and branch.
-- AVOID Bash for-loops/variables/pipes (trigger permission prompts). Use fixed codex-agent commands per worker instead (status, diff, logs, send).
+
+## MUST: Permissions Friction Rule
+**Goal**: Zero human approvals during orchestration.
+- NO Bash for-loops with `$vars`, NO `&&` chaining, NO pipes when avoidable
+- Use sequential fixed commands OR helper scripts
+- PREFER `git -C <path> status` over `cd && cmd && cd -`
+- **When approval prompt appears**: Log to `agent_docs/approvals/APPROVAL_LOG.md` FIRST
+- See `agent_docs/approvals/POLICY.md` for full patterns
+
+## MUST: Bash Session Safety
+**Goal**: Prevent shell corruption from deleted directories.
+- NEVER run cleanup while `pwd` is inside `.codex-agent/worktrees/**`
+- BEFORE cleanup: `cd <repo-root>` and confirm with `pwd`
+- If `getcwd` errors: `env -i HOME=$HOME bash -c "cd <repo-root> && <command>"`
 
 ## How We Work (Autopilot Loop)
 You are the **Supervisor**. Your job is to keep progress moving with minimal human involvement.
