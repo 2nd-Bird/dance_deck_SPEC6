@@ -47,6 +47,7 @@ This project uses `codex-agent` to orchestrate multiple Codex workers in paralle
 - Do NOT manipulate `.codex-agent/**` manually.
 - Interact with workers ONLY via `codex-agent` commands.
 - Each worker operates in its own git worktree and branch.
+- AVOID Bash for-loops/variables/pipes (trigger permission prompts). Use fixed codex-agent commands per worker instead (status, diff, logs, send).
 
 ## How We Work (Autopilot Loop)
 You are the **Supervisor**. Your job is to keep progress moving with minimal human involvement.
