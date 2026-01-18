@@ -1,0 +1,60 @@
+---
+# Addendum 6: BPM Auto Detect - Simplified Task Manifest
+# Run ID: run_20260118_170020
+# Generated: 2026-01-18 (simplified to avoid shell escaping issues)
+
+tasks:
+  - id: task-01-data-model
+    name: "Data Model Enhancement"
+    description: "Add bpmAuto and bpmSource fields to VideoItem type"
+    file: .github/codex/runs/run_20260118_170020/task-01-simple.md
+    priority: 1
+    dependencies: []
+
+  - id: task-02-audio-extraction
+    name: "Audio Extraction Service"
+    description: "Create service to extract mono PCM from video URI"
+    file: .github/codex/runs/run_20260118_170020/task-02-simple.md
+    priority: 1
+    dependencies: []
+
+  - id: task-03-bpm-analysis
+    name: "BPM Analysis Core"
+    description: "Implement beat detection algorithm (BPM + Beat Map)"
+    file: .github/codex/runs/run_20260118_170020/task-03-simple.md
+    priority: 1
+    dependencies: []
+
+  - id: task-04-tempo-normalization
+    name: "Tempo Normalization & Toggle"
+    description: "Apply 80-130 BPM prior, add ½/×2 toggle UI"
+    file: .github/codex/runs/run_20260118_170020/task-04-simple.md
+    priority: 2
+    dependencies: [task-03-bpm-analysis]
+
+  - id: task-05-beat-map-snapping
+    name: "Beat Map Snapping Logic"
+    description: "Extend snap functions to use Beat Map when available"
+    file: .github/codex/runs/run_20260118_170020/task-05-simple.md
+    priority: 2
+    dependencies: [task-01-data-model]
+
+  - id: task-06-ui-integration
+    name: "UI Integration & Orchestration"
+    description: "Wire Auto Detect button to analysis pipeline"
+    file: .github/codex/runs/run_20260118_170020/task-06-simple.md
+    priority: 3
+    dependencies: [task-01-data-model, task-02-audio-extraction, task-03-bpm-analysis]
+
+  - id: task-07-cache-fallback
+    name: "Cache & Fallback Handling"
+    description: "Handle persistence, error states, graceful degradation"
+    file: .github/codex/runs/run_20260118_170020/task-07-simple.md
+    priority: 3
+    dependencies: [task-06-ui-integration]
+
+quality_gates:
+  - pnpm typecheck
+  - pnpm lint
+  - pnpm test
+  - pnpm build
