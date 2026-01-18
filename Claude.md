@@ -22,6 +22,32 @@ Main non-regression expectations:
 - Manual BPM (Tap Tempo / ±), Phase (“This is 1”), and existing loop behavior must remain unchanged when **no Beat Map** exists.
 - Beat Map snapping is an additive upgrade only when Beat Map exists.
 
+## Codex Orchestration Tool
+
+This project uses `codex-agent` to orchestrate multiple Codex workers in parallel.
+
+### How to use codex-agent (DO NOT use tmux directly)
+- Start workers:
+  `codex-agent start --tasks <tasks.yaml>`
+
+- Check progress:
+  `codex-agent status`
+  `codex-agent logs <worker-id>`
+  `codex-agent diff <worker-id> --stat`
+
+- Send additional instructions:
+  `codex-agent send <worker-id> "<instruction>"`
+
+- Stop or cleanup (destructive, use with care):
+  `codex-agent stop <worker-id>`
+  `codex-agent cleanup --force`
+
+### Important rules
+- Do NOT inspect tmux sessions directly.
+- Do NOT manipulate `.codex-agent/**` manually.
+- Interact with workers ONLY via `codex-agent` commands.
+- Each worker operates in its own git worktree and branch.
+
 ## How We Work (Autopilot Loop)
 You are the **Supervisor**. Your job is to keep progress moving with minimal human involvement.
 
