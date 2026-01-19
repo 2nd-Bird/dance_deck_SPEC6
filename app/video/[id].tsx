@@ -14,7 +14,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Alert, Animated, Image, KeyboardAvoidingView, LayoutAnimation, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import uuid from 'react-native-uuid';
 
 export default function VideoPlayerScreen() {
@@ -190,6 +190,23 @@ export default function VideoPlayerScreen() {
             if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         };
     }, [memo, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks, videoItem]);
+
+    const handleSave = useCallback(() => {
+        if (!videoItem) return;
+        const updated = {
+            ...videoItem,
+            memo,
+            tags,
+            bpm,
+            phaseMillis,
+            loopLengthBeats,
+            loopStartMillis,
+            loopBookmarks,
+            updatedAt: Date.now(),
+        };
+        void updateVideo(updated);
+        setVideoItem(updated);
+    }, [videoItem, memo, tags, bpm, phaseMillis, loopLengthBeats, loopStartMillis, loopBookmarks]);
 
     const LOOP_EPSILON_MS = 50;
     const LOOP_HANDLE_WIDTH = 24;
@@ -699,6 +716,19 @@ export default function VideoPlayerScreen() {
         setBpm((current) => Math.max(20, current + delta));
     };
 
+    const handleTempoToggle = useCallback(() => {
+        if (!videoItem?.bpmAuto) return;
+
+        const baseBpm = videoItem.bpmAuto.bpm || bpm;
+        const family = [baseBpm / 2, baseBpm, baseBpm * 2];
+        const currentIndex = family.findIndex((value) => Math.abs(value - bpm) < 0.1);
+        const nextIndex = currentIndex === -1 ? 1 : (currentIndex + 1) % family.length;
+        const newBpm = family[nextIndex];
+
+        setBpm(newBpm);
+        handleSave();
+    }, [bpm, videoItem, handleSave]);
+
     const handleSelectLoopLength = (beats: number) => {
         if (Platform.OS !== "web") {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1014,6 +1044,14 @@ export default function VideoPlayerScreen() {
                                             <Pressable style={styles.phaseButton} onPress={handleSetPhase}>
                                                 <Text style={styles.phaseButtonText}>Here is 1</Text>
                                             </Pressable>
+                                            {videoItem?.bpmSource === "auto" && (
+                                                <TouchableOpacity
+                                                    onPress={handleTempoToggle}
+                                                    style={styles.tempoToggleButton}
+                                                >
+                                                    <Text style={styles.tempoToggleText}>½ / ×2</Text>
+                                                </TouchableOpacity>
+                                            )}
                                         </View>
                                         <View style={styles.bpmTapRow}>
                                             <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
@@ -1531,6 +1569,21 @@ const styles = StyleSheet.create({
     phaseButtonText: {
         color: '#111',
         fontWeight: '600',
+        fontSize: 12,
+    },
+    tempoToggleButton: {
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#111',
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    tempoToggleText: {
+        color: '#111',
+        fontWeight: '700',
         fontSize: 12,
     },
     bpmTapRow: {

@@ -12,6 +12,74 @@ function clamp(value: number, min: number, max: number): number {
   return value;
 }
 
+export function normalizeTempoWithPrior(
+  rawBpm: number,
+  confidence: number,
+  beatAlignmentScores?: { bpm: number; score: number }[]
+): {
+  normalizedBpm: number;
+  tempoFamily: number[];
+  reasoning: string;
+} {
+  const candidates = [rawBpm, rawBpm / 2, rawBpm * 2];
+
+  const getPriorScore = (bpm: number) => {
+    if (bpm >= 80 && bpm <= 130) return 1.0;
+    if (bpm >= 60 && bpm < 80) return 0.7;
+    if (bpm > 130 && bpm <= 160) return 0.6;
+    if (bpm > 160 && bpm <= 200) return 0.3;
+    return 0.1;
+  };
+
+  const getAlignmentScore = (bpm: number) => {
+    if (!beatAlignmentScores || beatAlignmentScores.length === 0) return 0;
+    let bestScore = 0;
+    let closestDiff = Number.POSITIVE_INFINITY;
+
+    for (let i = 0; i < beatAlignmentScores.length; i += 1) {
+      const entry = beatAlignmentScores[i];
+      const diff = Math.abs(entry.bpm - bpm);
+      if (diff < closestDiff) {
+        closestDiff = diff;
+        bestScore = entry.score;
+      }
+    }
+
+    return closestDiff <= 1 ? bestScore : 0;
+  };
+
+  let bestCandidate = candidates[0];
+  let bestScore = -Infinity;
+  const scoreDetails: string[] = [];
+
+  for (let i = 0; i < candidates.length; i += 1) {
+    const candidate = candidates[i];
+    const priorScore = getPriorScore(candidate);
+    const alignmentScore = getAlignmentScore(candidate);
+    const combinedScore = priorScore + alignmentScore;
+    scoreDetails.push(
+      `${candidate.toFixed(2)}(prior=${priorScore.toFixed(2)},align=${alignmentScore.toFixed(2)},score=${combinedScore.toFixed(2)})`
+    );
+
+    if (
+      combinedScore > bestScore ||
+      (combinedScore === bestScore &&
+        Math.abs(candidate - rawBpm) < Math.abs(bestCandidate - rawBpm))
+    ) {
+      bestScore = combinedScore;
+      bestCandidate = candidate;
+    }
+  }
+
+  const reasoning = `raw=${rawBpm.toFixed(2)}, conf=${confidence.toFixed(2)}, candidates=${scoreDetails.join(", ")}, chosen=${bestCandidate.toFixed(2)}`;
+
+  return {
+    normalizedBpm: bestCandidate,
+    tempoFamily: candidates,
+    reasoning,
+  };
+}
+
 function computeFrameEnergies(
   buffer: Float32Array,
   frameSize: number,
@@ -245,24 +313,30 @@ export async function analyzeBPM(
 
   const autocorrelation = computeAutocorrelation(onset, minLag, maxLag);
   const { lag, peakContrast } = pickBestLag(autocorrelation, minLag);
-  const bpm = (60 * sampleRate) / (HOP_SIZE * lag);
+  const rawBpm = (60 * sampleRate) / (HOP_SIZE * lag);
   const dynamic = clamp(energyStd / (energyMean + 1e-6), 0, 1);
   const confidence = clamp(peakContrast * dynamic, 0, 1);
+  const normalization = normalizeTempoWithPrior(rawBpm, confidence);
+  const normalizedBpm =
+    Number.isFinite(normalization.normalizedBpm) && normalization.normalizedBpm > 0
+      ? normalization.normalizedBpm
+      : rawBpm;
 
   const onsetThreshold = ONSET_THRESHOLD_RATIO;
   const onsetTimes = collectOnsetTimes(onset, sampleRate, HOP_SIZE, onsetThreshold);
   const startTime = onsetTimes.length > 0 ? onsetTimes[0] : 0;
   const beatTimesSec = buildBeatTimes(
     startTime,
-    60 / bpm,
+    60 / normalizedBpm,
     totalDurationSec,
     onsetTimes
   );
 
-  const tempoFamilyCandidates = bpm > 0 ? [bpm, bpm / 2, bpm * 2] : [];
+  const tempoFamilyCandidates =
+    normalizedBpm > 0 ? normalization.tempoFamily : [];
 
   return {
-    bpm,
+    bpm: normalizedBpm,
     confidence,
     beatTimesSec,
     tempoFamilyCandidates,
