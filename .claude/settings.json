@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PermissionRequest": {
+      "command": "node .claude/hooks/log_permission_request.mjs",
+      "description": "Automatically log every permission prompt to agent_docs/approvals/APPROVAL_LOG.md"
+    },
+    "PreToolUse": {
+      "Bash": {
+        "command": "node .claude/hooks/prevent_cwd_delete.mjs",
+        "description": "Prevent commands that could break shell by deleting CWD or operating from unsafe directories"
+      }
+    }
+  },
+  "env": {
+    "CLAUDE_PROJECT_DIR": "${workspaceFolder}"
+  }
+}
