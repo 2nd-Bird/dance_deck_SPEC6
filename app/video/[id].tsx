@@ -215,8 +215,23 @@ export default function VideoPlayerScreen() {
         () => getBeatDuration() * loopLengthBeats,
         [getBeatDuration, loopLengthBeats]
     );
-    const loopDurationMillis = getLoopDuration();
-    const loopEndMillis = loopStartMillis + loopDurationMillis;
+    const getLoopEndMillis = useCallback(() => {
+        const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+        if (beatMap && beatMap.length > 0 && loopLengthBeats) {
+            const roundedBeats = Math.round(loopLengthBeats);
+            if (Math.abs(loopLengthBeats - roundedBeats) < 0.05) {
+                const startSeconds = loopStartMillis / 1000;
+                const startBeatIndex = beatMap.findIndex((t) => Math.abs(t - startSeconds) < 0.05);
+                if (startBeatIndex >= 0 && startBeatIndex + roundedBeats < beatMap.length) {
+                    return beatMap[startBeatIndex + roundedBeats] * 1000;
+                }
+            }
+        }
+
+        return loopStartMillis + loopLengthBeats * getBeatDuration();
+    }, [videoItem, loopStartMillis, loopLengthBeats, getBeatDuration]);
+    const loopEndMillis = getLoopEndMillis();
+    const loopDurationMillis = Math.max(0, loopEndMillis - loopStartMillis);
 
     const clampLoopStart = useCallback(
         (value: number) => {
@@ -252,8 +267,8 @@ export default function VideoPlayerScreen() {
     }, [bpm]);
 
     useEffect(() => {
-        loopDurationRef.current = getLoopDuration();
-    }, [getLoopDuration]);
+        loopDurationRef.current = loopDurationMillis;
+    }, [loopDurationMillis]);
 
     useEffect(() => {
         if (!controlsVisible && overlayVisible) {
@@ -384,16 +399,37 @@ export default function VideoPlayerScreen() {
         [durationMillis]
     );
 
-    const snapLoopStartToBeat = useCallback(
-        (value: number, loopDuration: number) => {
+    const getNearestBeatIndex = useCallback((valueSeconds: number, beatMap: number[]) => {
+        return beatMap.reduce((closest, beatTime, index) => {
+            const currentDiff = Math.abs(beatTime - valueSeconds);
+            const closestDiff = Math.abs(beatMap[closest] - valueSeconds);
+            return currentDiff < closestDiff ? index : closest;
+        }, 0);
+    }, []);
+
+    const snapMillisToBeat = useCallback(
+        (value: number) => {
+            const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+            if (beatMap && beatMap.length > 0) {
+                const valueSeconds = value / 1000;
+                const nearestBeatIndex = getNearestBeatIndex(valueSeconds, beatMap);
+                return beatMap[nearestBeatIndex] * 1000;
+            }
             const beat = getBeatDuration();
             if (!beat || beat <= 0) return value;
             const offset = value - phaseMillis;
             const beats = Math.round(offset / beat);
-            const snapped = phaseMillis + beats * beat;
+            return phaseMillis + beats * beat;
+        },
+        [getBeatDuration, phaseMillis, getNearestBeatIndex, videoItem]
+    );
+
+    const snapLoopStartToBeat = useCallback(
+        (value: number, loopDuration: number) => {
+            const snapped = snapMillisToBeat(value);
             return clampLoopStartForDuration(snapped, loopDuration);
         },
-        [getBeatDuration, phaseMillis, clampLoopStartForDuration]
+        [snapMillisToBeat, clampLoopStartForDuration]
     );
 
     const getPositionFromX = (x: number) => {
@@ -512,11 +548,15 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("start", "end");
                 setDebugActive("start", false);
                 setActiveLoopDrag(null);
+                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
+                setLoopStartMillis(snapped);
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("start", "terminate");
                 setDebugActive("start", false);
                 setActiveLoopDrag(null);
+                const snapped = snapLoopStartToBeat(loopStartRef.current, loopDurationRef.current);
+                setLoopStartMillis(snapped);
             },
         })
     ).current;
@@ -556,11 +596,45 @@ export default function VideoPlayerScreen() {
                 logTimelineTouch("end", "end");
                 setDebugActive("end", false);
                 setActiveLoopDrag(null);
+                const duration = durationRef.current;
+                if (duration <= 0) return;
+                const start = loopStartRef.current;
+                const minDuration = getMinLoopDurationFromRefs();
+                let snappedEnd = snapMillisToBeat(start + loopDurationRef.current);
+                snappedEnd = Math.min(Math.max(snappedEnd, start + minDuration), duration);
+                const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+                if (beatMap && beatMap.length > 0) {
+                    const startIndex = getNearestBeatIndex(start / 1000, beatMap);
+                    const endIndex = getNearestBeatIndex(snappedEnd / 1000, beatMap);
+                    if (endIndex > startIndex) {
+                        setLoopLengthBeats(endIndex - startIndex);
+                        return;
+                    }
+                }
+                const beatDuration = 60000 / Math.max(1, bpmRef.current);
+                setLoopLengthBeats((snappedEnd - start) / beatDuration);
             },
             onPanResponderTerminate: () => {
                 logTimelineTouch("end", "terminate");
                 setDebugActive("end", false);
                 setActiveLoopDrag(null);
+                const duration = durationRef.current;
+                if (duration <= 0) return;
+                const start = loopStartRef.current;
+                const minDuration = getMinLoopDurationFromRefs();
+                let snappedEnd = snapMillisToBeat(start + loopDurationRef.current);
+                snappedEnd = Math.min(Math.max(snappedEnd, start + minDuration), duration);
+                const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+                if (beatMap && beatMap.length > 0) {
+                    const startIndex = getNearestBeatIndex(start / 1000, beatMap);
+                    const endIndex = getNearestBeatIndex(snappedEnd / 1000, beatMap);
+                    if (endIndex > startIndex) {
+                        setLoopLengthBeats(endIndex - startIndex);
+                        return;
+                    }
+                }
+                const beatDuration = 60000 / Math.max(1, bpmRef.current);
+                setLoopLengthBeats((snappedEnd - start) / beatDuration);
             },
         })
     ).current;
@@ -615,9 +689,9 @@ export default function VideoPlayerScreen() {
         setDurationMillis(status.durationMillis || 0);
         setIsPlaying(status.isPlaying);
 
-        const loopDuration = getLoopDuration();
-        const loopEnd = loopStartMillis + loopDuration;
-        if (loopEnabled && loopDuration > 0 && status.positionMillis >= loopEnd - LOOP_EPSILON_MS) {
+        const loopEnd = loopEndMillis;
+        const loopDurationActual = loopEnd - loopStartMillis;
+        if (loopEnabled && loopDurationActual > 0 && status.positionMillis >= loopEnd - LOOP_EPSILON_MS) {
             videoRef.current?.setPositionAsync(loopStartMillis);
         }
     };
@@ -733,11 +807,25 @@ export default function VideoPlayerScreen() {
         if (Platform.OS !== "web") {
             LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         }
+        const basePosition = Number.isFinite(positionMillis) && positionMillis > 0 ? positionMillis : loopStartMillis;
+        const beatMap = videoItem?.bpmAuto?.beatTimesSec;
+        if (beatMap && beatMap.length > 0) {
+            const baseSeconds = basePosition / 1000;
+            const startIndex = getNearestBeatIndex(baseSeconds, beatMap);
+            const endIndex = startIndex + beats;
+            if (endIndex < beatMap.length) {
+                const loopDuration = (beatMap[endIndex] - beatMap[startIndex]) * 1000;
+                const safeDuration = durationMillis ? Math.min(loopDuration, durationMillis) : loopDuration;
+                const nextStart = clampLoopStartForDuration(beatMap[startIndex] * 1000, safeDuration);
+                setLoopLengthBeats(beats);
+                setLoopStartMillis(nextStart);
+                return;
+            }
+        }
         const beatDuration = 60000 / Math.max(1, bpm);
         const loopDuration = beatDuration * beats;
         const safeDuration = durationMillis ? Math.min(loopDuration, durationMillis) : loopDuration;
         const adjustedBeats = safeDuration / beatDuration;
-        const basePosition = Number.isFinite(positionMillis) && positionMillis > 0 ? positionMillis : loopStartMillis;
         const nextStart = snapLoopStartToBeat(basePosition, safeDuration);
         setLoopLengthBeats(adjustedBeats);
         setLoopStartMillis(nextStart);
