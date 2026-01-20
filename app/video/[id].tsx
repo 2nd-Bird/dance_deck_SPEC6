@@ -2,6 +2,8 @@ import LibraryTile from "@/components/LibraryTile";
 import PaywallModal from "@/components/PaywallModal";
 import TapTempoButton from "@/components/TapTempoButton";
 import { useProStatus } from "@/contexts/ProContext";
+import { extractAudioFromVideo } from "@/services/audioExtraction";
+import { analyzeBPM, normalizeTempoWithPrior } from "@/services/bpmAnalysis";
 import { isProRequired } from "@/services/proGating";
 import { trackEvent } from "@/services/analytics";
 import { getVideos, updateVideo } from "@/services/storage";
@@ -52,6 +54,8 @@ export default function VideoPlayerScreen() {
     const [isScrubbing, setIsScrubbing] = useState(false);
     const [scrubPositionMillis, setScrubPositionMillis] = useState(0);
     const [showBpmTools, setShowBpmTools] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analysisProgress, setAnalysisProgress] = useState("");
     const [timelineThumbs, setTimelineThumbs] = useState<string[]>([]);
     const DEBUG_TIMELINE_TOUCH = __DEV__;
     const [debugTouchActive, setDebugTouchActive] = useState({
@@ -835,14 +839,77 @@ export default function VideoPlayerScreen() {
         setPhaseMillis(positionMillis);
     };
 
-    const handleAutoDetectBpm = () => {
-        if (isProRequired("bpm_auto_detect") && !isPro) {
-            void trackEvent('bpm_auto_detect_attempted', { videoId: videoItem?.id ?? null });
+    const handleAutoDetectBpm = useCallback(async () => {
+        if (!videoItem) return;
+
+        const requiresPro = await isProRequired("bpm_auto_detect");
+        if (requiresPro && !isPro) {
             setPaywallVisible(true);
             return;
         }
-        Alert.alert('Coming soon', 'BPM auto-detect is coming in a future update.');
-    };
+
+        setIsAnalyzing(true);
+        setAnalysisProgress("Extracting audio...");
+
+        try {
+            const audioData = await extractAudioFromVideo(videoItem.uri, {
+                maxDurationSec: 90,
+                sampleRate: 22050,
+            });
+
+            setAnalysisProgress("Detecting BPM...");
+
+            const analysisResult = await analyzeBPM(
+                audioData.audioBuffer,
+                audioData.sampleRate
+            );
+
+            setAnalysisProgress("Normalizing tempo...");
+
+            const normalized = normalizeTempoWithPrior(
+                analysisResult.bpm,
+                analysisResult.confidence
+            );
+
+            const updatedVideo = {
+                ...videoItem,
+                bpm: normalized.normalizedBpm,
+                bpmSource: "auto" as const,
+                bpmAuto: {
+                    bpm: normalized.normalizedBpm,
+                    confidence: analysisResult.confidence,
+                    tempoFamilyCandidates: normalized.tempoFamily,
+                    beatTimesSec: analysisResult.beatTimesSec,
+                    analyzedAt: new Date().toISOString(),
+                    version: "1" as const,
+                },
+            };
+
+            await updateVideo(updatedVideo);
+
+            setBpm(normalized.normalizedBpm);
+            setVideoItem(updatedVideo);
+
+            Alert.alert(
+                'BPM Detected',
+                `Estimated BPM: ${normalized.normalizedBpm}\nConfidence: ${(analysisResult.confidence * 100).toFixed(0)}%${
+                    analysisResult.confidence < 0.5
+                        ? '\n\nLow confidence. Consider using Tap Tempo to adjust.'
+                        : ''
+                }`
+            );
+        } catch (error) {
+            console.error('Auto detect BPM failed:', error);
+            Alert.alert(
+                'Auto Detect Failed',
+                'Could not analyze audio. Please use Tap Tempo to set BPM manually.',
+                [{ text: 'OK' }]
+            );
+        } finally {
+            setIsAnalyzing(false);
+            setAnalysisProgress("");
+        }
+    }, [videoItem, isPro, setPaywallVisible, setBpm, setVideoItem]);
 
     const handleSaveBookmark = () => {
         if (isProRequired("bookmark_create") && !isPro) {
@@ -1144,10 +1211,23 @@ export default function VideoPlayerScreen() {
                                         <View style={styles.bpmTapRow}>
                                             <TapTempoButton onSetBpm={handleTapTempo} label="Tap Tempo" tone="dark" />
                                         </View>
-                                        <Pressable style={styles.autoDetectButton} onPress={handleAutoDetectBpm}>
-                                            <MaterialCommunityIcons name="waveform" size={16} color="#111" />
-                                            <Text style={styles.autoDetectText}>Auto Detect (Pro)</Text>
-                                        </Pressable>
+                                        <TouchableOpacity
+                                            onPress={handleAutoDetectBpm}
+                                            disabled={isAnalyzing}
+                                            style={[
+                                                styles.autoDetectButton,
+                                                isAnalyzing && styles.autoDetectButtonDisabled,
+                                            ]}
+                                        >
+                                            {isAnalyzing ? (
+                                                <>
+                                                    <ActivityIndicator size="small" color="#fff" />
+                                                    <Text style={styles.autoDetectText}>{analysisProgress}</Text>
+                                                </>
+                                            ) : (
+                                                <Text style={styles.autoDetectText}>Auto Detect BPM</Text>
+                                            )}
+                                        </TouchableOpacity>
                                     </View>
                                 )}
 
@@ -1685,14 +1765,17 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#ddd',
+        borderColor: '#111',
         alignSelf: 'flex-start',
-        backgroundColor: '#fff',
+        backgroundColor: '#111',
+    },
+    autoDetectButtonDisabled: {
+        opacity: 0.6,
     },
     autoDetectText: {
         fontSize: 12,
         fontWeight: '600',
-        color: '#111',
+        color: '#fff',
     },
     loopLengthRow: {
         flexDirection: 'row',
