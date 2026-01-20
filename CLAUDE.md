@@ -71,18 +71,52 @@ git worktree prune
 ## Autopilot Loop (Supervisor Role)
 1. Read `SPEC.md` and `.github/codex/TODO.md` (if present)
 2. Plan briefly (5-12 line bullet list)
-3. Generate parallel tasks (avoid file conflicts)
-4. Start workers via `codex-agent start`
-5. Monitor with `./scripts/monitor_workers.sh`
+3. Generate parallel tasks (avoid file conflicts, use SKILL: no-conflict-task-decomposition)
+4. Start workers via `/spawn-workers` (includes conflict check)
+5. Monitor with `/status` or `./scripts/monitor_workers.sh`
 6. Intervene only when needed (via `codex-agent send`)
 7. Integrate sequentially when complete
-8. Run quality gates before committing
+8. Delegate build/test to build-fix worker (use `/handoff-buildfix`)
 9. Update logs and repeat
+
+## Slash Commands
+
+Convenience commands for orchestration workflow:
+
+- `/status` - Show all worker states, diffs, and recent logs
+- `/logs20 <worker-id>` - Show last 20 log lines for a specific worker
+- `/spawn-workers <tasks.yaml>` - Run conflict check, then start workers
+- `/handoff-buildfix` - Generate build-fix task from quality gate errors
+
+Commands are implemented in `.claude/commands/` and follow approval rules.
+
+## Supervisor Restrictions
+
+The supervisor (you) operates under these constraints to enforce delegation:
+
+### Code Edit Restrictions
+- **Cannot edit**: `app/**`, `services/**`, `components/**`, `types/**`
+- **Cannot write**: New files in product code directories
+- **Reason**: All code changes must be delegated to workers
+- **Enforcement**: `.claude/settings.local.json` deny rules
+
+### Build/Test Restrictions
+- **Cannot run**: `pnpm build`, `pnpm test` in iterative loops
+- **Must delegate**: Quality gate failures to dedicated build-fix worker
+- **Use**: `/handoff-buildfix` to create build-fix task
+- **Enforcement**: `.claude/settings.local.json` ask rules
+
+### Allowed Operations
+- Read any file (for monitoring, review, planning)
+- Edit config/docs (CLAUDE.md, tasks.yaml, .github/codex/**)
+- Run worker commands (codex-agent, git -C worktrees)
+- Create task definitions and run plans
 
 ## Progressive Disclosure
 This file is kept short. Details are in:
 - `.claude/rules/*.md` (procedures)
 - `agent_docs/approvals/*.md` (approval patterns, policies)
 - Task files: `.github/codex/runs/*/task-*.md`
+- Skills: `SKILLS.md` and `.github/codex/skills/*.md`
 
 When confused, consult `SPEC_FULL.md` only if term is ambiguous in `SPEC.md`.
